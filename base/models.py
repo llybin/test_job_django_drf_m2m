@@ -1,4 +1,5 @@
 from django.db import models
+from django.core.exceptions import ValidationError
 
 
 class Page(models.Model):
@@ -26,6 +27,21 @@ CONTENT_TYPE_CHOICES = (
     (ContentType.TEXT, 'Text'),
 )
 
+CONTENT_TYPE_CHOICES_DICT = dict(CONTENT_TYPE_CHOICES)
+
+# field name - required
+CONTENT_TYPE_CUSTOM_FIELDS = {
+    ContentType.AUDIO: (('audio', True), ('audio_bitrate', False)),
+    ContentType.VIDEO: (('video', True), ('video_subtitles', False)),
+    ContentType.TEXT: (('text', True),),
+}
+
+# fill dynamic all custom fields on start for using in validator
+ALL_CONTENT_TYPE_CUSTOM_FIELDS = set()
+for _content_type in CONTENT_TYPE_CUSTOM_FIELDS:
+    for _f in CONTENT_TYPE_CUSTOM_FIELDS[_content_type]:
+        ALL_CONTENT_TYPE_CUSTOM_FIELDS.add(_f[0])
+
 
 class Content(models.Model):
     title = models.CharField(max_length=200)
@@ -49,8 +65,25 @@ class Content(models.Model):
     class Meta:
         ordering = ('-id',)
 
+    def content_type_validator(self, fields):
+        for f in fields:
+            if f[1] and not getattr(self, f[0]):
+                raise ValidationError(
+                    {f[0]: f"Must be filled for type: {CONTENT_TYPE_CHOICES_DICT[self.content_type]}"})
+
+        type_fields = set(x[0] for x in fields)
+        non_type_fields = ALL_CONTENT_TYPE_CUSTOM_FIELDS - type_fields
+
+        for f in non_type_fields:
+            if getattr(self, f):
+                raise ValidationError(
+                    {f: f"Must be empty for type: {CONTENT_TYPE_CHOICES_DICT[self.content_type]}"})
+
+    def clean(self):
+        self.content_type_validator(CONTENT_TYPE_CUSTOM_FIELDS[self.content_type])
+
     def __str__(self):
-        return f"{dict(CONTENT_TYPE_CHOICES).get(self.content_type)}: {self.title}"
+        return f"{CONTENT_TYPE_CHOICES_DICT[self.content_type]}: {self.title}"
 
 
 class PageContent(models.Model):
