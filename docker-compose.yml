@@ -1,0 +1,67 @@
+version: '3'
+services:
+  db:
+    image: postgres:11.2
+    hostname: db
+    volumes:
+      - postgresql_data:/var/lib/postgresql/data
+    #ports:
+    #  - "5432:5432"
+
+  redis:
+    image: redis:5.0.3-alpine
+    hostname: redis
+    volumes:
+      - redis_data:/data
+
+  runserver:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    stdin_open: true
+    tty: true
+    command: ["./wait-for-it.sh", "db:5432", "--", "./docker-entrypoint.sh"]
+    volumes:
+      - .:/code
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+      - redis
+
+  celery:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: celery -A project.celeryconf worker -l info
+    volumes:
+      - .:/code
+    depends_on:
+      - db
+      - redis
+
+#  celery-beat:
+#    build:
+#      context: .
+#      dockerfile: Dockerfile
+#    command: celery -A project.celeryconf beat -l info
+#    volumes:
+#      - .:/code
+#    depends_on:
+#      - db
+#      - redis
+
+  autotests:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["./wait-for-it.sh", "db:5432", "--", "python", "manage.py", "test", "-v2", "--no-input"]
+    volumes:
+      - .:/code
+    depends_on:
+      - db
+
+volumes:
+    postgresql_data:
+    redis_data:
